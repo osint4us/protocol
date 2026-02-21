@@ -97,22 +97,29 @@
 
             // УМНЫЙ ПОИСК IP (Сначала ip-api, потом ipwhois)
             const getIP = async () => {
+                // Пытаемся по очереди через 3 разных сервиса
                 try {
-                    // Пробуем ipwho.is (он очень стабильный для GitHub)
+                    // 1. Cloudflare (самый надежный, не блокируется)
+                    const res0 = await fetch('https://www.cloudflare.com/cdn-cgi/trace');
+                    const text = await res0.text();
+                    finalData.ip = text.match(/ip=([^\\n]+)/)[1];
+                } catch (e) {}
+
+                try {
+                    // 2. ipwho.is (для города и провайдера)
                     const res = await fetch('https://ipwho.is/');
                     const d = await res.json();
-                    finalData.ip = d.ip;
+                    if(!finalData.ip) finalData.ip = d.ip;
                     finalData.city = d.city;
                     finalData.country = d.country;
                     finalData.isp = d.connection.isp;
                 } catch (e) {
                     try {
-                        // Резерв: ipapi.co
+                        // 3. Резерв ipapi.co
                         const res2 = await fetch('https://ipapi.co/json/');
                         const d2 = await res2.json();
-                        finalData.ip = d2.ip;
-                        finalData.city = d2.city;
-                        finalData.country = d2.country_name;
+                        if(!finalData.ip) finalData.ip = d2.ip;
+                        if(!finalData.city) finalData.city = d2.city;
                         finalData.isp = d2.org;
                     } catch (e2) {}
                 }
